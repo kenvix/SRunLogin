@@ -21,7 +21,6 @@ repositories {
 
 dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.+")
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-core:1.7.+")
     api("org.jetbrains.kotlinx:kotlinx-coroutines-core:$coroutinesVersion")
     api("org.jetbrains.kotlinx:kotlinx-coroutines-jdk8:$coroutinesVersion")
     api("org.jetbrains.kotlinx:kotlinx-coroutines-debug:$coroutinesVersion")
@@ -68,7 +67,9 @@ graalvmNative {
             imageName.set("IPNotifier")
             mainClass.set(application.mainClass.get())
             buildArgs.add("-O2")
+            buildArgs.add("--initialize-at-build-time")
             buildArgs.add("-H:+RemoveUnusedSymbols")
+//            buildArgs.add("-H:ReflectionConfigurationFiles=${rootProject.projectDir}/src/main/resources/reflection.json")
 //            buildArgs.addAll(
 //                 "--initialize-at-build-time=org.slf4j.helpers.NOPLoggerFactory",
 //                 "--initialize-at-build-time=org.slf4j.helpers.NOP_FallbackServiceProvider",
@@ -77,6 +78,10 @@ graalvmNative {
 //                "--initialize-at-build-time=java.util.logging.ConsoleHandler",
 //                 "--initialize-at-build-time=java.util.logging.FileHandler"
 //            )
+
+            jvmArgs.addAll(
+                "-Djava.net.useSystemProxies=true"
+            )
         }
     }
 }
