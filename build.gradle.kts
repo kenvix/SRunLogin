@@ -25,6 +25,9 @@ dependencies {
     api("org.jetbrains.kotlinx:kotlinx-coroutines-jdk8:$coroutinesVersion")
     api("org.jetbrains.kotlinx:kotlinx-coroutines-debug:$coroutinesVersion")
 
+    // https://mvnrepository.com/artifact/org.eclipse.paho/org.eclipse.paho.mqttv5.client
+    implementation("org.eclipse.paho:org.eclipse.paho.mqttv5.client:1.2.+")
+
     testImplementation(kotlin("test"))
 
     // slf4j is too fucking heavy
