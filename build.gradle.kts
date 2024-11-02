@@ -1,12 +1,12 @@
 import org.gradle.internal.declarativedsl.parsing.main
 
 plugins {
-    kotlin("jvm") version "2.0.10"
-    kotlin("plugin.serialization") version "2.0.10"
+    kotlin("jvm") version "2.0.+"
+    kotlin("plugin.serialization") version "2.0.+"
     application
     java
     `java-library`
-    id("org.graalvm.buildtools.native") version "0.10.2"
+    id("org.graalvm.buildtools.native") version "0.10.+"
 }
 
 group = "com.kenvix"
@@ -24,9 +24,17 @@ dependencies {
     api("org.jetbrains.kotlinx:kotlinx-coroutines-core:$coroutinesVersion")
     api("org.jetbrains.kotlinx:kotlinx-coroutines-jdk8:$coroutinesVersion")
     api("org.jetbrains.kotlinx:kotlinx-coroutines-debug:$coroutinesVersion")
+    implementation("com.github.ajalt.clikt:clikt:5.0.+")
+    // https://mvnrepository.com/artifact/org.json/json
+    implementation("org.json:json:20240303")
+
+
+    // https://mvnrepository.com/artifact/com.squareup.okhttp3/okhttp
+//    implementation("com.squareup.okhttp3:okhttp:5.0.+")
+
 
     // https://mvnrepository.com/artifact/org.eclipse.paho/org.eclipse.paho.mqttv5.client
-    implementation("org.eclipse.paho:org.eclipse.paho.mqttv5.client:1.2.+")
+    // implementation("org.eclipse.paho:org.eclipse.paho.mqttv5.client:1.2.+")
 
     testImplementation(kotlin("test"))
 
@@ -51,7 +59,7 @@ kotlin {
 }
 
 application {
-    mainClass = "com.kenvix.ipnotifier.Main"
+    mainClass = "com.kenvix.nwafunet.Main"
 }
 
 graalvmNative {
@@ -67,11 +75,13 @@ graalvmNative {
         named("main") {
             sharedLibrary = false
             fallback = false
-            imageName.set("IPNotifier")
+            imageName.set("NwafuNetworkLogin")
             mainClass.set(application.mainClass.get())
             buildArgs.add("-O2")
-            buildArgs.add("--initialize-at-build-time")
+//            buildArgs.add("--initialize-at-build-time")
             buildArgs.add("-H:+RemoveUnusedSymbols")
+//            buildArgs.add("--initialize-at-run-time=jdk.internal.net.http.HttpClientFacade")
+//            buildArgs.add("--initialize-at-run-time=jdk.internal.net.http.common.DebugLogger,jdk.internal.net.http.common.Utils,jdk.internal.net.http.common.DebugLogger\$LoggerConfig")
 //            buildArgs.add("-H:ReflectionConfigurationFiles=${rootProject.projectDir}/src/main/resources/reflection.json")
 //            buildArgs.addAll(
 //                 "--initialize-at-build-time=org.slf4j.helpers.NOPLoggerFactory",

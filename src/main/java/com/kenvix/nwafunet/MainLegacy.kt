@@ -1,7 +1,7 @@
-@file:JvmName("Main")
-package com.kenvix.ipnotifier
+@file:JvmName("MainLegacy")
+package com.kenvix.nwafunet
 
-import com.kenvix.ipnotifier.contacts.AppConfig
+import com.kenvix.nwafunet.contacts.AppConfig
 import com.kenvix.utils.log.Logging
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.json.Json
@@ -14,7 +14,7 @@ private val logger = Logging.getLogger("Main")
 
 @OptIn(ExperimentalSerializationApi::class)
 suspend fun main(args: Array<String>) {
-    logger.info("IP Notifier Started // by Kenvix <i@kenvix.com>")
+    logger.info("Nwafu Network Tool Started // by Kenvix <i@kenvix.com>")
 
     AppConfig.INSTANCE = loadConfig(args.firstOrNull() ?: "./config.json")
 }

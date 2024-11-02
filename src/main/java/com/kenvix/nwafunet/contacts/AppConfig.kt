@@ -1,10 +1,6 @@
-package com.kenvix.ipnotifier.contacts
+package com.kenvix.nwafunet.contacts
 
 import kotlinx.serialization.*
-import kotlinx.serialization.json.*
-import java.net.Inet4Address
-import java.net.Inet6Address
-import java.net.InetAddress
 
 @Serializable
 enum class StunServerPolicy { ROUND_ROBIN, RANDOM }
