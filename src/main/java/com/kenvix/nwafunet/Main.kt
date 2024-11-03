@@ -22,7 +22,7 @@ import java.time.Duration
 
 
 object Entry : CliktCommand() {
-    val portalAddress: String by option().help("Login Portal URL. Default http://172.26.8.11").default("http://172.26.8.11")
+    val portalAddress: String by option().help("Login Portal URL. For example http://172.26.8.11").default("http://172.26.8.11")
     val outboundIp: String by option().help("Outbound IP").help("Your outbound IP address. Leave blank for auto detect.").defaultLazy { getOutboundIpAddress() }
     val accountId: String by option().prompt("Account ID").help("Account ID")
     val accountPassword: String by option().prompt("Password").help("Password")
@@ -42,7 +42,7 @@ object Entry : CliktCommand() {
 
     @OptIn(DelicateCoroutinesApi::class)
     suspend fun entry() {
-        logger.info("Nwafu Network Tool Started // by Kenvix <i@kenvix.com>")
+        logger.info("SRun Login Tool Started // by Kenvix <i@kenvix.com>")
         logger.info("studentId: $accountId    studentPassword: $accountPassword")
         logger.info("Outbound IP: $outboundIp")
 
