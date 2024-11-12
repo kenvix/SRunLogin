@@ -31,11 +31,18 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Pre-build shell
+      - name: Pre-build shell for POSIX
+        if: runner.os != 'Windows'
         run: |
           ls -al
           chmod +x gradlew
           ./gradlew --version
+
+      - name: Pre-build shell for Windows
+        if: runner.os == 'Windows'
+        run: |
+          ls
+          .\gradlew.bat --version
 
       - name: Set up GraalVM
         uses: graalvm/setup-graalvm@v1
