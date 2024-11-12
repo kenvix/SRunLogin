@@ -12,8 +12,6 @@ on:
   push:
     branches:
       - master
-  schedule:
-    - cron: "3 4 */15 * *"  # 每两周的午夜触发一次
 
 concurrency:
   group: build
