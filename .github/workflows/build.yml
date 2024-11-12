@@ -24,7 +24,8 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        architecture: [x64, aarch64]
+        architecture: [x64]
+#        architecture: [x64, aarch64]
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -107,11 +108,19 @@ jobs:
       - name: Build native image
         run: ./gradlew nativeCompile
 
+      - name: Build universal shadow JAR
+        shell: bash
+        if: runner.os == 'Linux' && runner.arch == 'x64'
+        run: |
+          ./gradlew shadowJar
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: native-image-${{ matrix.os }}-${{ matrix.architecture }}
-          path: build/native/nativeCompile/SrunLogin*
+          path: |
+            build/native/nativeCompile/*
+            build/libs/*
           if-no-files-found: error
 
   release:
@@ -134,4 +143,4 @@ jobs:
           overwrite: true
           files: ./artifacts/**
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.REL_GITHUB_TOKEN }}

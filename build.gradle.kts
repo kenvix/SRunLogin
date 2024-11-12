@@ -7,6 +7,7 @@ plugins {
     java
     `java-library`
     id("org.graalvm.buildtools.native") version "0.10.+"
+    id("com.gradleup.shadow") version "8.3.+"
 }
 
 group = "com.kenvix"

@@ -26,19 +26,19 @@ import java.util.logging.Level
  * -Djava.util.logging.ConsoleHandler.level=INFO
  */
 object Entry : CliktCommand() {
-    val portalAddress: String by option().help("Login Portal URL. For example http://172.26.8.11").default("http://172.26.8.11")
-    private val ip: String? by option().help("Outbound IP").help("Your outbound IP address. Leave blank for auto detect.")
+    val portalAddress: String by option("-z", "--portal").help("Login Portal URL. For example http://172.26.8.11").default("http://172.26.8.11")
+    private val ip: String? by option("-a", "--ip").help("Outbound IP").help("Your outbound IP address. Leave blank for auto detect.")
 
-    val accountId: String by option().prompt("Account ID").help("Account ID")
-    val accountPassword: String by option().prompt("Password").help("Password")
-    val networkInterface: String? by option().help("Network Interface Name. All traffic will be sent through this interface if specified.").convert { it.trim() }
+    val accountId: String by option("-u", "--username").prompt("Account ID").help("Account ID")
+    val accountPassword: String by option("-p", "--password").prompt("Password").help("Password")
+    val networkInterface: String? by option("-i", "--interface").help("Network Interface Name. All traffic will be sent through this interface if specified.").convert { it.trim() }
 
     val logout: Boolean by option().boolean().default(false)
-    val checkAlive: Int by option().int().help("Check whether network is still alive every N seconds. 0 for disabled.").default(0)
+    val checkAlive: Int by option("-c", "--check-alive").int().help("Check whether network is still alive every N seconds. 0 for disabled.").default(0)
     val keepAlive: Int by option().int().help("Send heart packet to keep alive every N seconds. 0 for disabled.").default(0)
-    val retry: Int by option().int().help("Retry every N seconds if failed. 0 for disabled.").default(10)
-    val retryWaitTime: Int by option().int().help("Retry wait time in N seconds").default(2)
-    val logLevel: Level by option().convert { Level.parse(it) }.help("Log Level. FINEST < FINER < FINE < CONFIG < INFO < WARNING < SEVERE").default(Level.INFO)
+    val isRetry: Int by option("--retry").int().help("Retry every N seconds if failed. 0 for disabled.").default(10)
+    val retryWaitTime: Int by option("-r", "--retry-wait-time").int().help("Retry wait time in N seconds").default(2)
+    val logLevel: Level by option("-l", "--log-level").convert { Level.parse(it) }.help("Log Level. FINEST < FINER < FINE < CONFIG < INFO < WARNING < SEVERE").default(Level.INFO)
 
     val httpClient by lazy {
         val portalHost = URI(portalAddress).host
@@ -111,8 +111,8 @@ object Entry : CliktCommand() {
                 logger.severe("Failed to perform network auth: ${e.message}")
             }
 
-            if (retry > 0) {
-                delay(retry * 1000L)
+            if (isRetry > 0) {
+                delay(isRetry * 1000L)
             } else {
                 break
             }
