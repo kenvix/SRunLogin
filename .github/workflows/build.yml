@@ -56,7 +56,9 @@ jobs:
           popd
           
           # Install a symlink for use by native-image
-          ln -s $MUSL_HOME/bin/musl-gcc $MUSL_HOME/bin/x86_64-linux-musl-gcc
+          sudo ln -s $MUSL_HOME/bin/musl-gcc $MUSL_HOME/bin/x86_64-linux-musl-gcc
+          sudo chmod -R +r "$MUSL_HOME"
+          sudo chmod -R +w "$MUSL_HOME"
           
           # Extend the system path and confirm that musl is available by printing its version
           export PATH="$MUSL_HOME/bin:$PATH"
@@ -68,6 +70,8 @@ jobs:
           CC=musl-gcc ./configure --prefix=$MUSL_HOME --static
           sudo make
           sudo make install
+          sudo chmod -R +r "$MUSL_HOME"
+          sudo chmod -R +w "$MUSL_HOME"
           popd
 
 
