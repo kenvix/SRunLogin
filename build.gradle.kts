@@ -82,7 +82,7 @@ graalvmNative {
         named("main") {
             sharedLibrary = false
             fallback = false
-            imageName.set("NwafuNetworkLogin")
+            imageName.set("SrunLogin")
             mainClass.set(application.mainClass.get())
             buildArgs.add("-O2")
 //            buildArgs.add("--initialize-at-build-time")

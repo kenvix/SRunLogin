@@ -19,93 +19,63 @@ concurrency:
   group: build-${{ github.ref }}
   cancel-in-progress: true
 
-env:
-  IMAGE_NAME: docker-atrust-autologin
 
 jobs:
-  build-docker-multiarch:
-    runs-on: ubuntu-24.04
-    name: Build Multi-Arch Docker Image
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        architecture: [x64, aarch64]
+        exclude:
+          - os: windows-latest
+            architecture: aarch64  # Windows不支持aarch64
     steps:
-      - name: Checkout
-        uses: actions/checkout@master
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-      - name: submodules-init
-        uses: snickerbockers/submodules-init@v4
-
-      - name: Run Docker Prebuild shell
-        run: |
-          echo "Prebuild shell"
-          ls -al
-          mkdir -p ./build/output || true
-          ls -al ./build/output
-
-      - name: Set Up QEMU
-        uses: docker/setup-qemu-action@v1
-
-      - name: Set Up Buildx
-        uses: docker/setup-buildx-action@v1
-
-      - name: Login DockerHub
-        uses: docker/login-action@v1
+      - name: Set up GraalVM
+        uses: graalvm/setup-graalvm@v1
         with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_PASSWORD }}
+          java-version: '21'
+          distribution: 'graalvm'
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          components: 'native-image'
 
-      - name: Set Up Cache
-        uses: actions/cache@v2
-        id: buildx-cache
+      - name: Set up Gradle
+        uses: gradle/gradle-build-action@v2
         with:
-          path: /tmp/.buildx-cache
-          key: ${{ runner.os }}-buildx
+          gradle-version: '8.8'
 
-      - name: Buildx
-        uses: docker/build-push-action@v2
+      - name: Build native image
+        run: ./gradlew nativeCompile
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
         with:
-          context: .
-          file: Dockerfile
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: |
-            ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:latest
+          name: native-image-${{ matrix.os }}-${{ matrix.architecture }}
+          path: build/native/nativeCompile/SrunLogin*
+          if-no-files-found: error
 
-      - name: Upload ModelScope
-        run: |
-          echo "Upload ModelScope 1: Save docker image"
-          cd ./build/output
-          
-          docker pull ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:latest --platform=linux/amd64
-          docker tag ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:latest ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:amd64
-          
-          echo "Save docker image to ./${{ env.IMAGE_NAME }}-amd64.tar.xz"
-          docker save ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:amd64 | xz -T0 -c -5 -v > ./${{ env.IMAGE_NAME }}-amd64.tar.xz
-          
-          docker pull ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:latest --platform=linux/arm64
-          docker tag ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:latest ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:arm64
-          
-          echo "Save docker image to ./${{ env.IMAGE_NAME }}-arm64.tar.xz"
-          docker save ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:arm64 | xz -T0 -c -5 -v > ./${{ env.IMAGE_NAME }}-arm64.tar.xz
-          
-          ls -al .
-          
-          echo "Upload ModelScope 2: Upload to ModelScope"
-          git lfs install
-          GIT_LFS_SKIP_SMUDGE=1 git clone https://oauth2:${{ secrets.MODELSCOPE_TOKEN }}@www.modelscope.cn/kenvix/aTrustLoginRepo.git aTrustLoginRepo
-          rm -f aTrustLoginRepo/${{ env.IMAGE_NAME }}-amd64.tar.xz
-          rm -f aTrustLoginRepo/${{ env.IMAGE_NAME }}-arm64.tar.xz
-          mv ./${{ env.IMAGE_NAME }}-amd64.tar.xz aTrustLoginRepo/
-          mv ./${{ env.IMAGE_NAME }}-arm64.tar.xz aTrustLoginRepo/
-          
-          cd aTrustLoginRepo
-          ls -al .
-          
-          git lfs track "*.tar.xz"
-          git add .gitattributes
-          git add ${{ env.IMAGE_NAME }}-amd64.tar.xz
-          git add ${{ env.IMAGE_NAME }}-arm64.tar.xz
-      
-          git config --global user.name "Kenvix CI Auto Commit"
-          git config --global user.email "ci@kenvix.com"
-      
-          git commit -m "Upload docker image"
-          git push
+  release:
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: native-image-${{ matrix.os }}-${{ matrix.architecture }}
+          path: ./artifacts
+
+      - name: Create or Update Release
+        id: create_release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ github.ref }}
+          name: Release ${{ github.ref }}
+          draft: false
+          prerelease: false
+          files: ./artifacts/native-image-${{ matrix.os }}-${{ matrix.architecture }}
+          overwrite: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
