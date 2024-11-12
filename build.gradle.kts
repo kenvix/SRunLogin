@@ -85,6 +85,13 @@ graalvmNative {
             imageName.set("SrunLogin")
             mainClass.set(application.mainClass.get())
             buildArgs.add("-O2")
+
+            // For linux only
+            if (System.getProperty("os.name").lowercase().contains("linux")) {
+                buildArgs.add("--static")
+                buildArgs.add("--libc=musl")
+            }
+
 //            buildArgs.add("--initialize-at-build-time")
             buildArgs.add("-H:+RemoveUnusedSymbols")
 //            buildArgs.add("--initialize-at-run-time=jdk.internal.net.http.HttpClientFacade")

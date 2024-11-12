@@ -16,7 +16,7 @@ on:
     - cron: "3 4 */15 * *"  # 每两周的午夜触发一次
 
 concurrency:
-  group: build-${{ github.ref }}
+  group: build
   cancel-in-progress: true
 
 
@@ -37,6 +37,12 @@ jobs:
           ls -al
           chmod +x gradlew
           ./gradlew --version
+
+      - name: Pre-build shell for Linux
+        if: runner.os == 'Linux' || runner.os == 'Ubuntu' || runner.os == 'CentOS'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --install-suggests -y musl musl-tools zlib1g-dev
 
       - name: Pre-build shell for Windows
         if: runner.os == 'Windows'
@@ -74,18 +80,17 @@ jobs:
       - name: Download artifacts
         uses: actions/download-artifact@v4
         with:
-          name: native-image-${{ matrix.os }}-${{ matrix.architecture }}
           path: ./artifacts
 
       - name: Create or Update Release
         id: create_release
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: ${{ github.ref }}
-          name: Release ${{ github.ref }}
+          tag_name: ${{ github.ref_name }}
+          name: Release ${{ github.ref_name }}
           draft: false
           prerelease: false
-          files: ./artifacts/native-image-${{ matrix.os }}-${{ matrix.architecture }}
           overwrite: true
+          files: ./artifacts/**
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
