@@ -6,10 +6,13 @@ import com.github.ajalt.clikt.core.main
 import com.github.ajalt.clikt.parameters.options.*
 import com.github.ajalt.clikt.parameters.types.boolean
 import com.github.ajalt.clikt.parameters.types.int
+import com.kenvix.nwafunet.srun.SrunJsEngine
 import com.kenvix.utils.log.Logging
 import com.kenvix.utils.log.debug
 import kotlinx.coroutines.*
 import kotlinx.coroutines.future.await
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import org.json.JSONObject
 import java.io.IOException
 import java.net.InetSocketAddress
@@ -37,6 +40,7 @@ object Entry : CliktCommand() {
     val scope: CoroutineScope = CoroutineScope(Dispatchers.IO)
 
     private val logger = Logging.getLogger("Entry")
+    private val mutex = Mutex()
 
     override fun run() { }
 
@@ -48,24 +52,26 @@ object Entry : CliktCommand() {
 
         performNetworkAuth()
 
-        if (checkAlive > 0) {
-           scope.launch {
-                while (isActive) {
-                    logger.debug("Performing check alive request")
-                    if (!isNetworkReady()) {
-                        logger.warning("Network is not ready, performing re-auth")
-                        performNetworkAuth()
+        coroutineScope {
+            if (checkAlive > 0) {
+                launch {
+                    while (isActive) {
+                        logger.debug("Performing check alive request")
+                        if (!isIntraNetworkReady()) {
+                            logger.warning("Network is not ready, performing re-auth")
+                            performNetworkAuth()
+                        }
+                        delay(checkAlive * 1000L)
                     }
-                    delay(checkAlive * 1000L)
                 }
             }
-        }
 
-        if (keepAlive > 0) {
-            scope.launch {
-                while (isActive) {
-                    performKeepAlive()
-                    delay(keepAlive * 1000L)
+            if (keepAlive > 0) {
+                launch {
+                    while (isActive) {
+                        performKeepAlive()
+                        delay(keepAlive * 1000L)
+                    }
                 }
             }
         }
@@ -81,14 +87,16 @@ object Entry : CliktCommand() {
     }
 
     suspend fun performNetworkAuth() {
-        logger.info("Performing logout request")
+        while (!isIntraNetworkReady()) {
+            // performLogout()
+            delay(500L)
 
-        performLogin()
-        performLogout()
+            performLogin()
 
-        while (!isNetworkReady()) {
-            logger.info("Performing logout request")
-            performLogout()
+            if (logout) {
+                performLogout()
+            }
+
             delay(retryWaitTime * 1000L)
         }
     }
@@ -155,11 +163,22 @@ object Entry : CliktCommand() {
             .header("X-Requested-With", "XMLHttpRequest")
     }
 
-    suspend fun performLogin() {
-        SrunLogin(portalAddress, accountId, accountPassword, outboundIp, httpClient).login()
+    suspend fun performLogin(): Boolean {
+        mutex.withLock {
+            logger.info("Performing login request")
+            val result = SrunJsEngine().login(portalAddress, accountId, accountPassword, outboundIp, httpClient)
+            if (result.contains("login_ok")) {
+                logger.info("Login success")
+                return true
+            } else {
+                logger.warning("Login failed: $result")
+                return false
+            }
+        }
     }
 
     suspend fun performLogout() {
+        logger.info("Performing logout request")
         val time = System.currentTimeMillis()
         val request = createRequestBuilderWithCommonHeaders("${portalAddress}/cgi-bin/srun_portal?callback=jQuery112405095399744250795_$time&action=logout&username=$accountId&ip=$outboundIp&ac_id=1&_=$time")
             .GET()
@@ -172,8 +191,8 @@ object Entry : CliktCommand() {
         }
     }
 
-    suspend fun isNetworkReady(): Boolean {
-        logger.info("Checking network status")
+    suspend fun isPublicNetworkReady(): Boolean {
+        logger.info("Checking Public network status")
         val request = HttpRequest.newBuilder()
             .uri(URI.create("http://connect.rom.miui.com/generate_204"))
             .method("HEAD", HttpRequest.BodyPublishers.noBody())
@@ -183,14 +202,34 @@ object Entry : CliktCommand() {
             // 发送请求并检查响应状态码
             val response: HttpResponse<Void> = httpClient.sendAsync(request, HttpResponse.BodyHandlers.discarding()).await()
             if (response.statusCode() == 204) {
-                logger.info("Network is reachable")
+                logger.info("Public Network is reachable")
                 return true
             } else {
-                logger.warning("Network is hijacked: ${response.statusCode()}")
+                logger.warning("Public Network is hijacked: ${response.statusCode()}")
                 return false
             }
         } catch (e: IOException) {
-            logger.warning("Network is not reachable: ${e.message}")
+            logger.warning("Public Network is not reachable: ${e.message}")
+            return false
+        }
+    }
+
+    suspend fun isIntraNetworkReady(): Boolean {
+        logger.info("Checking Intra network status")
+
+        val timestamp = System.currentTimeMillis()
+        val request = HttpRequest.newBuilder()
+            .uri(URI.create("$portalAddress/cgi-bin/rad_user_info?callback=jQuery112406390292035501186_$timestamp&_=$timestamp"))
+            .build()
+
+        try {
+            // 发送请求并检查响应状态码
+            val response: HttpResponse<String> = httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString()).await()
+            if ("online_device_total" in response.body())
+                return true
+            return "not_online_error" !in response.body()
+        } catch (e: IOException) {
+            logger.warning("Intra Network is not reachable: ${e.message}")
             return false
         }
     }

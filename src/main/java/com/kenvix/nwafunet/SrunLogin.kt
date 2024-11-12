@@ -3,6 +3,7 @@ package com.kenvix.nwafunet
 import com.kenvix.utils.log.Logging
 import kotlinx.coroutines.future.await
 import java.net.URI
+import java.net.URLEncoder
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
@@ -96,24 +97,27 @@ class SrunLogin(
         doComplexWork()
 
         val timestamp = System.currentTimeMillis()
+        val params = mapOf(
+            "callback" to "jQuery11240645308969735664_$timestamp",
+            "action" to "login",
+            "username" to username,
+            "password" to "{MD5}$hmd5",
+            "ac_id" to acId.toString(),
+            "ip" to ip,
+            "chksum" to chksum,
+            "info" to info,
+            "n" to n.toString(),
+            "type" to type.toString(),
+            "os" to "windows+10",
+            "name" to "windows",
+            "double_stack" to "0",
+            "_" to timestamp.toString()
+        )
         val uri = URI.create(
-            "$srunPortalApi?callback=jQuery11240645308969735664_$timestamp" +
-                    "&action=login" +
-                    "&username=$username" +
-                    "&password={MD5}$hmd5" +
-                    "&ac_id=$acId" +
-                    "&ip=$ip" +
-                    "&chksum=$chksum" +
-                    "&info=$info" +
-                    "&n=$n" +
-                    "&type=$type" +
-                    "&os=windows+10" +
-                    "&name=windows" +
-                    "&double_stack=0" +
-                    "&_=$timestamp"
+            "$srunPortalApi?" + params.map { "${it.key}=${URLEncoder.encode(it.value, Charsets.UTF_8)}" }.joinToString("&")
         )
 
-        val request = HttpRequest.newBuilder().uri(uri).build()
+        val request = HttpRequest.newBuilder().uri(uri).GET().build()
         val response = client.sendAsync(request, HttpResponse.BodyHandlers.ofString()).await()
         logger.info("Login response: ${response.body()}")
         return response.body()

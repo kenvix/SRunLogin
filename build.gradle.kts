@@ -28,6 +28,13 @@ dependencies {
     // https://mvnrepository.com/artifact/org.json/json
     implementation("org.json:json:20240303")
 
+    // https://mvnrepository.com/artifact/org.graalvm.js/js
+    implementation("org.graalvm.js:js:24.1.+")
+// https://mvnrepository.com/artifact/org.graalvm.js/js-scriptengine
+    implementation("org.graalvm.js:js-scriptengine:24.1.+")
+
+
+
 
     // https://mvnrepository.com/artifact/com.squareup.okhttp3/okhttp
 //    implementation("com.squareup.okhttp3:okhttp:5.0.+")
