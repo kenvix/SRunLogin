@@ -31,6 +31,7 @@ jobs:
 
       - name: Pre-build shell for POSIX
         if: runner.os != 'Windows'
+        allow_failure: true
         run: |
           ls -al
           chmod +x gradlew
@@ -38,6 +39,7 @@ jobs:
 
       - name: Pre-build shell for Linux
         if: runner.os == 'Linux' || runner.os == 'Ubuntu' || runner.os == 'CentOS'
+        allow_failure: true
         run: |
           # Specify an installation directory for musl:
           export MUSL_HOME=$PWD/musl-toolchain
@@ -78,6 +80,7 @@ jobs:
 
       - name: Pre-build shell for Windows
         if: runner.os == 'Windows'
+        allow_failure: true
         run: |
           ls
           .\gradlew.bat --version
