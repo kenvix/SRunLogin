@@ -1,11 +1,8 @@
 package com.kenvix.nwafunet.srun
 
+
 import com.kenvix.utils.log.Logging
-import com.kenvix.utils.log.debug
-import com.kenvix.utils.log.finest
 import kotlinx.coroutines.future.await
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import java.net.URI
 import java.net.URLEncoder
 import java.net.http.HttpClient
@@ -75,7 +72,7 @@ class SrunJsEngine(
                     "&_=$timestamp"
         )
 
-        val request = HttpRequest.newBuilder().uri(uri).build()
+        val request = createRequestBuilderWithCommonHeaders(uri, initUrl).build()
         val response = client.sendAsync(request, HttpResponse.BodyHandlers.ofString()).await()
         val matcher = Pattern.compile("\"challenge\":\"(.*?)\"").matcher(response.body())
         if (matcher.find()) {
@@ -84,6 +81,7 @@ class SrunJsEngine(
             throw IllegalStateException("Failed to get token")
         }
     }
+
 
     suspend fun login(initUrl: String, username: String, password: String, ip: String, client: HttpClient = HttpClient.newHttpClient()): String {
         val token = getToken(initUrl, username, password, ip, client)
@@ -104,7 +102,7 @@ class SrunJsEngine(
 
         logger.finest("Login URL: $uri")
 
-        val request = HttpRequest.newBuilder().uri(uri).GET().build()
+        val request = createRequestBuilderWithCommonHeaders(uri, initUrl).GET().build()
         val response = client.sendAsync(request, HttpResponse.BodyHandlers.ofString()).await()
         return response.body()
     }

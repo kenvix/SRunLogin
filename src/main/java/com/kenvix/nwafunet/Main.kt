@@ -15,52 +15,123 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.json.JSONObject
 import java.io.IOException
-import java.net.InetSocketAddress
-import java.net.Socket
-import java.net.URI
+import java.net.*
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
 import java.time.Duration
+import java.util.logging.Level
 
-
+/**
+ * -Djava.util.logging.ConsoleHandler.level=INFO
+ */
 object Entry : CliktCommand() {
     val portalAddress: String by option().help("Login Portal URL. For example http://172.26.8.11").default("http://172.26.8.11")
-    val outboundIp: String by option().help("Outbound IP").help("Your outbound IP address. Leave blank for auto detect.").defaultLazy { getOutboundIpAddress() }
+    private val ip: String? by option().help("Outbound IP").help("Your outbound IP address. Leave blank for auto detect.")
+
     val accountId: String by option().prompt("Account ID").help("Account ID")
     val accountPassword: String by option().prompt("Password").help("Password")
+    val networkInterface: String? by option().help("Network Interface Name. All traffic will be sent through this interface if specified.").convert { it.trim() }
+
     val logout: Boolean by option().boolean().default(false)
     val checkAlive: Int by option().int().help("Check whether network is still alive every N seconds. 0 for disabled.").default(0)
     val keepAlive: Int by option().int().help("Send heart packet to keep alive every N seconds. 0 for disabled.").default(0)
+    val retry: Int by option().int().help("Retry every N seconds if failed. 0 for disabled.").default(10)
     val retryWaitTime: Int by option().int().help("Retry wait time in N seconds").default(2)
+    val logLevel: Level by option().convert { Level.parse(it) }.help("Log Level. FINEST < FINER < FINE < CONFIG < INFO < WARNING < SEVERE").default(Level.INFO)
 
-    val httpClient = HttpClient.newBuilder()
-        .connectTimeout(Duration.ofSeconds(3))
-        .build()
+    val httpClient by lazy {
+        val portalHost = URI(portalAddress).host
+        val portalAddress = InetAddress.getAllByName(portalHost)
+        val canIpv4 = portalAddress.any { it is InetAddress && it is Inet4Address }
+        val canIpv6 = portalAddress.any { it is InetAddress && it is Inet6Address }
+
+        HttpClient.newBuilder()
+            .connectTimeout(Duration.ofSeconds(3))
+            .let {
+                if (networkInterface == null) {
+                    it
+                } else {
+                    if (canIpv4 && interfaceIpv4 != null) it.localAddress(interfaceIpv4)
+                    else if (canIpv6 && interfaceIpv6 != null) it.localAddress(interfaceIpv6)
+                    else throw IllegalArgumentException("Network interface $networkInterface not found")
+                }
+            }.build()
+    }
+
+    val outboundIp get() = ip ?: getOutboundIpAddress(httpClient)
     val scope: CoroutineScope = CoroutineScope(Dispatchers.IO)
+    val interfaceMap: MutableMap<String, List<InetAddress>> = mutableMapOf()
+    val interfaceIpv4 get() = interfaceMap[networkInterface]?.filterIsInstance<Inet4Address>()?.firstOrNull()
+    val interfaceIpv6 get() = interfaceMap[networkInterface]?.filterIsInstance<Inet6Address>()?.firstOrNull()
 
-    private val logger = Logging.getLogger("Entry")
+    private val logger by lazy { Logging.getLogger("Entry", logLevel) }
     private val mutex = Mutex()
 
     override fun run() { }
 
     @OptIn(DelicateCoroutinesApi::class)
     suspend fun entry() {
+        System.setProperty("java.util.logging.ConsoleHandler.level", logLevel.name)
+
         logger.info("SRun Login Tool Started // by Kenvix <i@kenvix.com>")
+
+        val interfaces = withContext(Dispatchers.IO) { NetworkInterface.getNetworkInterfaces() }
+            .asSequence()
+            .filter { it.isUp && !it.isLoopback && it.inetAddresses.hasMoreElements() }
+            .toList()
+        interfaces.forEach {
+            interfaceMap[it.displayName.trim()] = it.inetAddresses.asSequence().filter { ip ->
+                !ip.isLoopbackAddress &&  !ip.isMulticastAddress && !ip.isAnyLocalAddress && !ip.isLinkLocalAddress
+            }.toList()
+        }
+
+        logger.info("All enabled network interfaces with IP addresses on this machine: \n${interfaces.joinToString(separator = "\n") {
+            val ipStr = interfaceMap[it.displayName]!!.joinToString(separator = "") { inetAddress -> "\tIP: ${inetAddress.hostAddress}\n" }
+            "${it.displayName}\n${ipStr}"
+        }}")
+
+        if (networkInterface != null) {
+            logger.info("Selected network interface: $networkInterface")
+            if (interfaceMap[networkInterface] == null) {
+                logger.severe("Network interface $networkInterface not found. Check your network interface name.")
+                return
+            } else {
+                logger.fine("Selected network interface IPv4: $interfaceIpv4 \tIPv6: $interfaceIpv6")
+            }
+        }
+
         logger.info("studentId: $accountId    studentPassword: $accountPassword")
         logger.info("Outbound IP: $outboundIp")
 
-        performNetworkAuth()
+        while (true) {
+            try {
+                performNetworkAuth()
+            } catch (e: Exception) {
+                logger.severe("Failed to perform network auth: ${e.message}")
+            }
+
+            if (retry > 0) {
+                delay(retry * 1000L)
+            } else {
+                break
+            }
+        }
 
         coroutineScope {
             if (checkAlive > 0) {
                 launch {
                     while (isActive) {
-                        logger.debug("Performing check alive request")
-                        if (!isIntraNetworkReady()) {
-                            logger.warning("Network is not ready, performing re-auth")
-                            performNetworkAuth()
+                        try {
+                            logger.finer("Performing check alive request")
+                            if (!isIntraNetworkReady()) {
+                                logger.warning("Network is not ready, performing re-auth")
+                                performNetworkAuth()
+                            }
+                        } catch (e: Exception) {
+                            logger.severe("Failed to perform check alive: ${e.message}")
                         }
+
                         delay(checkAlive * 1000L)
                     }
                 }
@@ -69,7 +140,11 @@ object Entry : CliktCommand() {
             if (keepAlive > 0) {
                 launch {
                     while (isActive) {
-                        performKeepAlive()
+                        try {
+                            performKeepAlive()
+                        } catch (e: Exception) {
+                            logger.severe("Failed to perform keep alive: ${e.message}")
+                        }
                         delay(keepAlive * 1000L)
                     }
                 }
@@ -78,8 +153,7 @@ object Entry : CliktCommand() {
     }
 
     suspend fun performKeepAlive() {
-        val req = HttpRequest.newBuilder()
-            .uri(URI.create(portalAddress))
+        val req = createRequestBuilderWithCommonHeaders(portalAddress)
             .method("OPTIONS", HttpRequest.BodyPublishers.noBody())
             .build()
 
@@ -101,25 +175,21 @@ object Entry : CliktCommand() {
         }
     }
 
-    fun getOutboundIpAddress(): String {
+    fun getOutboundIpAddress(client: HttpClient = HttpClient.newBuilder().build()): String {
         try {
-            return runBlocking { getSrunOutboundIpAddress() }
+            return runBlocking { getSrunOutboundIpAddress(client) }
         } catch (e: Exception) {
             logger.severe("Failed to get outbound IP address from srun: ${e.message}")
             return getInterfaceOutboundIpAddress(portalAddress)
         }
     }
 
-    suspend fun getSrunOutboundIpAddress(): String {
+    suspend fun getSrunOutboundIpAddress(client: HttpClient = HttpClient.newBuilder().build()): String {
         val timestamp = System.currentTimeMillis()
         val callback = "jQuery112404013496966464385_$timestamp"
         val url = "$portalAddress/cgi-bin/rad_user_info?callback=$callback&_=$timestamp"
 
-        val client = HttpClient.newBuilder()
-            .build()
-
-        val request = HttpRequest.newBuilder()
-            .uri(URI.create(url))
+        val request = createRequestBuilderWithCommonHeaders(url)
             .GET()
             .build()
 
@@ -152,15 +222,8 @@ object Entry : CliktCommand() {
         }
     }
 
-    fun createRequestBuilderWithCommonHeaders(url: String): HttpRequest.Builder {
-        return HttpRequest.newBuilder()
-            .uri(URI.create(url))
-            .header("Accept", "text/javascript, application/javascript, application/ecmascript, application/x-ecmascript, */*; q=0.01")
-            .header("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6,fr-BE;q=0.5,fr;q=0.4")
-            .header("DNT", "1")
-            .header("Referer", "${portalAddress}/srun_portal_success?ac_id=1&theme=pro")
-            .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36 Edg/130.0.0.0")
-            .header("X-Requested-With", "XMLHttpRequest")
+    private fun createRequestBuilderWithCommonHeaders(url: String): HttpRequest.Builder {
+         return com.kenvix.nwafunet.srun.createRequestBuilderWithCommonHeaders(url, portalAddress)
     }
 
     suspend fun performLogin(): Boolean {
@@ -192,9 +255,8 @@ object Entry : CliktCommand() {
     }
 
     suspend fun isPublicNetworkReady(): Boolean {
-        logger.info("Checking Public network status")
-        val request = HttpRequest.newBuilder()
-            .uri(URI.create("http://connect.rom.miui.com/generate_204"))
+        logger.fine("Checking Public network status")
+        val request = createRequestBuilderWithCommonHeaders("http://connect.rom.miui.com/generate_204")
             .method("HEAD", HttpRequest.BodyPublishers.noBody())
             .build()
 
@@ -202,7 +264,7 @@ object Entry : CliktCommand() {
             // 发送请求并检查响应状态码
             val response: HttpResponse<Void> = httpClient.sendAsync(request, HttpResponse.BodyHandlers.discarding()).await()
             if (response.statusCode() == 204) {
-                logger.info("Public Network is reachable")
+                logger.fine("Public Network is reachable")
                 return true
             } else {
                 logger.warning("Public Network is hijacked: ${response.statusCode()}")
@@ -215,19 +277,22 @@ object Entry : CliktCommand() {
     }
 
     suspend fun isIntraNetworkReady(): Boolean {
-        logger.info("Checking Intra network status")
+        logger.fine("Checking Intra network status")
 
         val timestamp = System.currentTimeMillis()
-        val request = HttpRequest.newBuilder()
-            .uri(URI.create("$portalAddress/cgi-bin/rad_user_info?callback=jQuery112406390292035501186_$timestamp&_=$timestamp"))
+        val request = createRequestBuilderWithCommonHeaders("$portalAddress/cgi-bin/rad_user_info?callback=jQuery112406390292035501186_$timestamp&_=$timestamp")
             .build()
 
         try {
             // 发送请求并检查响应状态码
             val response: HttpResponse<String> = httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString()).await()
-            if ("online_device_total" in response.body())
+            if ("online_device_total" in response.body() || "not_online_error" !in response.body()) {
+                logger.fine("Intra Network is online")
                 return true
-            return "not_online_error" !in response.body()
+            } else {
+                logger.info("Intra Network is OFFLINE!")
+                return false
+            }
         } catch (e: IOException) {
             logger.warning("Intra Network is not reachable: ${e.message}")
             return false

@@ -83,7 +83,7 @@ function srunEncodeAuth(username, password, ip, token) {
     // 用户密码 MD5 加密
     var hmd5 = md5(password, token); // 用户信息加密
 
-    console.debug(ip)
+    // console.debug(ip)
 
     var i = srunEncodeLogin({'username':username,'password':password,'ip':ip,'acid':'1','enc_ver':'srun_bx1'}, token)
 

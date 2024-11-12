@@ -1,5 +1,6 @@
 package com.kenvix.nwafunet
 
+import com.kenvix.nwafunet.srun.createRequestBuilderWithCommonHeaders
 import com.kenvix.utils.log.Logging
 import kotlinx.coroutines.future.await
 import java.net.URI
@@ -74,7 +75,7 @@ class SrunLogin(
                     "&_=$timestamp"
         )
 
-        val request = HttpRequest.newBuilder().uri(uri).build()
+        val request = createRequestBuilderWithCommonHeaders(uri, initUrl).build()
         val response = client.sendAsync(request, HttpResponse.BodyHandlers.ofString()).await()
         val matcher = Pattern.compile("\"challenge\":\"(.*?)\"").matcher(response.body())
         if (matcher.find()) {
@@ -117,7 +118,7 @@ class SrunLogin(
             "$srunPortalApi?" + params.map { "${it.key}=${URLEncoder.encode(it.value, Charsets.UTF_8)}" }.joinToString("&")
         )
 
-        val request = HttpRequest.newBuilder().uri(uri).GET().build()
+        val request = createRequestBuilderWithCommonHeaders(uri, initUrl).GET().build()
         val response = client.sendAsync(request, HttpResponse.BodyHandlers.ofString()).await()
         logger.info("Login response: ${response.body()}")
         return response.body()
