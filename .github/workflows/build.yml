@@ -40,6 +40,9 @@ jobs:
         if: runner.os == 'Linux' || runner.os == 'Ubuntu' || runner.os == 'CentOS'
         run: |
           set +e
+          sudo apt-get update
+          sudo apt-get install --install-suggests -y musl musl-tools zlib1g-dev
+          
           # Specify an installation directory for musl:
           export MUSL_HOME=$PWD/musl-toolchain
           
