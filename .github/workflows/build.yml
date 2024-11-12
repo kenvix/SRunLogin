@@ -167,6 +167,12 @@ jobs:
         with:
           path: ./artifacts
 
+      - name: Package artifacts
+        shell: bash
+        if: runner.os == 'Linux' && runner.arch == 'x64'
+        run: |
+          zip -r artifacts.zip ./artifacts
+
       - name: Create or Update Release
         id: create_release
         uses: softprops/action-gh-release@v1
@@ -176,6 +182,6 @@ jobs:
           draft: false
           prerelease: false
           overwrite: true
-          files: ./artifacts/**
+          files: Artifacts.zip
         env:
           GITHUB_TOKEN: ${{ secrets.REL_GITHUB_TOKEN }}
