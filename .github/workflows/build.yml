@@ -41,7 +41,8 @@ jobs:
         run: |
           set +e
           sudo apt-get update
-          sudo apt-get install --install-suggests -y musl musl-tools zlib1g-dev
+          
+          # sudo apt-get install --install-suggests -y musl musl-tools zlib1g-dev
           
           # Specify an installation directory for musl:
           export MUSL_HOME=$PWD/musl-toolchain
@@ -61,6 +62,7 @@ jobs:
           
           # Install a symlink for use by native-image
           sudo ln -s $MUSL_HOME/bin/musl-gcc $MUSL_HOME/bin/x86_64-linux-musl-gcc
+          sudo ln -s $MUSL_HOME/bin/musl-gcc $MUSL_HOME/bin/aarch64-linux-musl-gcc
           sudo chmod -R +r "$MUSL_HOME"
           sudo chmod -R +w "$MUSL_HOME"
           
@@ -71,7 +73,7 @@ jobs:
           # Build zlib with musl from source and install into the MUSL_HOME directory
           tar -xzvf zlib-1.2.13.tar.gz
           pushd zlib-1.2.13
-          CC=musl-gcc ./configure --prefix=$MUSL_HOME --static
+          CC=$MUSL_HOME/bin/musl-gcc ./configure --prefix=$MUSL_HOME --static
           sudo make
           sudo make install
           sudo chmod -R +r "$MUSL_HOME"
