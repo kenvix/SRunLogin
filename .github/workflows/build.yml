@@ -73,6 +73,7 @@ jobs:
           sudo chmod -R +r "$MUSL_HOME"
           sudo chmod -R +w "$MUSL_HOME"
           popd
+          true
 
 
       - name: Pre-build shell for Windows
