@@ -171,7 +171,7 @@ jobs:
         shell: bash
         if: runner.os == 'Linux' && runner.arch == 'x64'
         run: |
-          zip -r artifacts.zip ./artifacts
+          zip -9 -r Artifacts.zip ./artifacts
 
       - name: Create or Update Release
         id: create_release
