@@ -37,6 +37,7 @@ jobs:
           ./gradlew --version
 
       - name: Pre-build shell for Linux
+        shell: bash
         if: runner.os == 'Linux' || runner.os == 'Ubuntu' || runner.os == 'CentOS'
         run: |
           set +e
@@ -68,6 +69,8 @@ jobs:
           
           # Extend the system path and confirm that musl is available by printing its version
           export PATH="$MUSL_HOME/bin:$PATH"
+          
+          echo "$MUSL_HOME/bin" >> $GITHUB_PATH
           x86_64-linux-musl-gcc --version
           
           # Build zlib with musl from source and install into the MUSL_HOME directory
