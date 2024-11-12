@@ -21,6 +21,7 @@ import java.net.http.HttpRequest
 import java.net.http.HttpResponse
 import java.time.Duration
 import java.util.logging.Level
+import kotlin.system.exitProcess
 
 /**
  * -Djava.util.logging.ConsoleHandler.level=INFO
@@ -32,6 +33,7 @@ object Entry : CliktCommand() {
     val accountId: String by option("-u", "--username").prompt("Account ID").help("Account ID")
     val accountPassword: String by option("-p", "--password").prompt("Password").help("Password")
     val networkInterface: String? by option("-i", "--interface").help("Network Interface Name. All traffic will be sent through this interface if specified.").convert { it.trim() }
+    val waitInterface: Int by option().int().help("Wait Network Interface if it is currently unavailable every N seconds. Default 0 for disabled.").default(0)
 
     val logout: Boolean by option().boolean().default(false)
     val checkAlive: Int by option("-c", "--check-alive").int().help("Check whether network is still alive every N seconds. 0 for disabled.").default(0)
@@ -41,22 +43,25 @@ object Entry : CliktCommand() {
     val logLevel: Level by option("-l", "--log-level").convert { Level.parse(it) }.help("Log Level. FINEST < FINER < FINE < CONFIG < INFO < WARNING < SEVERE").default(Level.INFO)
 
     val httpClient by lazy {
-        val portalHost = URI(portalAddress).host
-        val portalAddress = InetAddress.getAllByName(portalHost)
-        val canIpv4 = portalAddress.any { it is InetAddress && it is Inet4Address }
-        val canIpv6 = portalAddress.any { it is InetAddress && it is Inet6Address }
-
         HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(3))
             .let {
                 if (networkInterface == null) {
                     it
                 } else {
-                    if (canIpv4 && interfaceIpv4 != null) it.localAddress(interfaceIpv4)
-                    else if (canIpv6 && interfaceIpv6 != null) it.localAddress(interfaceIpv6)
-                    else throw IllegalArgumentException("Network interface $networkInterface not found")
+                    it.localAddress(getInterfaceAvailableLocalAddress() ?: throw IllegalArgumentException("Network interface $networkInterface not found"))
                 }
             }.build()
+    }
+
+    private fun getInterfaceAvailableLocalAddress(): InetAddress? {
+        val portalHost = URI(portalAddress).host
+        val portalAddress = InetAddress.getAllByName(portalHost)
+        val canIpv4 = portalAddress.any { it is InetAddress && it is Inet4Address }
+        val canIpv6 = portalAddress.any { it is InetAddress && it is Inet6Address }
+        return if (canIpv4 && interfaceIpv4 != null) interfaceIpv4
+        else if (canIpv6 && interfaceIpv6 != null) interfaceIpv6
+        else null
     }
 
     val outboundIp get() = ip ?: getOutboundIpAddress(httpClient)
@@ -71,33 +76,23 @@ object Entry : CliktCommand() {
     override fun run() { }
 
     @OptIn(DelicateCoroutinesApi::class)
-    suspend fun entry() {
+    suspend fun entry(): Int {
         System.setProperty("java.util.logging.ConsoleHandler.level", logLevel.name)
 
         logger.info("SRun Login Tool Started // by Kenvix <i@kenvix.com>")
 
-        val interfaces = withContext(Dispatchers.IO) { NetworkInterface.getNetworkInterfaces() }
-            .asSequence()
-            .filter { it.isUp && !it.isLoopback && it.inetAddresses.hasMoreElements() }
-            .toList()
-        interfaces.forEach {
-            interfaceMap[it.displayName.trim()] = it.inetAddresses.asSequence().filter { ip ->
-                !ip.isLoopbackAddress &&  !ip.isMulticastAddress && !ip.isAnyLocalAddress && !ip.isLinkLocalAddress
-            }.toList()
-        }
+        while (true) {
+            try {
+                updateNetworkInterfacesList()
+                break
+            } catch (e: Exception) {
+                logger.severe("Failed to get network interfaces list: ${e.message}")
 
-        logger.info("All enabled network interfaces with IP addresses on this machine: \n${interfaces.joinToString(separator = "\n") {
-            val ipStr = interfaceMap[it.displayName]!!.joinToString(separator = "") { inetAddress -> "\tIP: ${inetAddress.hostAddress}\n" }
-            "${it.displayName}\n${ipStr}"
-        }}")
-
-        if (networkInterface != null) {
-            logger.info("Selected network interface: $networkInterface")
-            if (interfaceMap[networkInterface] == null) {
-                logger.severe("Network interface $networkInterface not found. Check your network interface name.")
-                return
-            } else {
-                logger.fine("Selected network interface IPv4: $interfaceIpv4 \tIPv6: $interfaceIpv6")
+                if (waitInterface > 0) {
+                    delay(waitInterface * 1000L)
+                } else {
+                    return 3
+                }
             }
         }
 
@@ -107,14 +102,15 @@ object Entry : CliktCommand() {
         while (true) {
             try {
                 performNetworkAuth()
+                break
             } catch (e: Exception) {
                 logger.severe("Failed to perform network auth: ${e.message}")
             }
 
-            if (isRetry > 0) {
-                delay(isRetry * 1000L)
+            if (waitInterface > 0) {
+                delay(waitInterface * 1000L)
             } else {
-                break
+                return 4
             }
         }
 
@@ -149,6 +145,46 @@ object Entry : CliktCommand() {
                     }
                 }
             }
+        }
+
+        return 0
+    }
+
+    private suspend fun updateNetworkInterfacesList() {
+        mutex.withLock {
+            interfaceMap.clear()
+
+            val interfaces = withContext(Dispatchers.IO) { NetworkInterface.getNetworkInterfaces() }
+                .asSequence()
+                .filter { it.isUp && !it.isLoopback && it.inetAddresses.hasMoreElements() }
+                .toList()
+            interfaces.forEach {
+                interfaceMap[it.displayName.trim()] = it.inetAddresses.asSequence().filter { ip ->
+                    !ip.isLoopbackAddress && !ip.isMulticastAddress && !ip.isAnyLocalAddress && !ip.isLinkLocalAddress
+                }.toList()
+            }
+
+            logger.info(
+                "All enabled network interfaces with IP addresses on this machine: \n${
+                    interfaces.joinToString(separator = "\n") {
+                        val ipStr =
+                            interfaceMap[it.displayName]!!.joinToString(separator = "") { inetAddress -> "\tIP: ${inetAddress.hostAddress}\n" }
+                        "${it.displayName}\n${ipStr}"
+                    }
+                }"
+            )
+
+            if (networkInterface != null) {
+                logger.info("Selected network interface: $networkInterface")
+                if (interfaceMap[networkInterface] == null) {
+                    throw IllegalArgumentException("Network interface $networkInterface not found. Check your network interface name.")
+                } else {
+                    logger.fine("Selected network interface IPv4: $interfaceIpv4 \tIPv6: $interfaceIpv6")
+                }
+            }
+
+            if (getInterfaceAvailableLocalAddress() == null)
+                throw IllegalArgumentException("No available IP address for outbound. Please check your network interface.")
         }
     }
 
@@ -321,5 +357,5 @@ object Entry : CliktCommand() {
 
 suspend fun main(args: Array<String>) {
     Entry.main(args)
-    Entry.entry()
+    exitProcess(Entry.entry())
 }
