@@ -1,0 +1,28 @@
+#!/bin/sh /etc/rc.common
+
+START=99  # 设置启动优先级
+STOP=10   # 设置停止优先级
+
+# 引入 procd 管理工具
+USE_PROCD=1
+
+start_service() {
+    procd_open_instance
+    procd_set_param command /opt/bin/SrunLogin \
+        --portal="YOUR_PORTAL_ADDRESS" \
+        --username="YOUR_USERNAME" \
+        --password="YOUR_PASSWORD" \
+        --check-alive=30 \
+        --log-level=INFO \
+        --interface=eth1 \
+        --wait-interface=3
+    procd_set_param stdout 1
+    procd_set_param stderr 1
+    procd_set_param respawn  # 自动重启
+    procd_close_instance
+}
+
+stop_service() {
+    # OpenWrt 会自动处理服务停止，无需额外定义
+    return 0
+}

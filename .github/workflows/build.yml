@@ -86,8 +86,8 @@ jobs:
           export MUSL_HOME=$PWD/musl-toolchain
           
           # Download musl and zlib sources:
-          curl -O https://musl.libc.org/releases/musl-1.2.4.tar.gz
-          curl -O https://zlib.net/fossils/zlib-1.2.13.tar.gz
+          cp .github/musl-1.2.4.tar.gz .
+          cp .github/zlib-1.2.13.tar.gz .
           
           # Build musl from source
           tar -xzvf musl-1.2.4.tar.gz
@@ -144,12 +144,6 @@ jobs:
       - name: Build native image
         run: ./gradlew nativeCompile
 
-      - name: Build universal shadow JAR
-        shell: bash
-        if: runner.os == 'Linux' && runner.arch == 'x64'
-        run: |
-          ./gradlew shadowJar
-
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
@@ -173,6 +167,12 @@ jobs:
         run: |
           zip -r artifacts.zip ./artifacts
 
+      - name: Delete existing release
+        continue-on-error: true
+        uses: liudonghua123/delete-release-action@v1
+        with:
+          release_name: latest_${{ github.ref_name }}
+
       - name: Create or Update Release
         id: create_release
         uses: softprops/action-gh-release@v1
@@ -180,8 +180,7 @@ jobs:
           tag_name: latest_${{ github.ref_name }}
           name: Release ${{ github.ref_name }}
           draft: false
-          prerelease: false
-          overwrite: true
+          prerelease: true
           files: Artifacts.zip
         env:
           GITHUB_TOKEN: ${{ secrets.REL_GITHUB_TOKEN }}

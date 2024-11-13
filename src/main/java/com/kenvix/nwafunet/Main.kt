@@ -205,6 +205,10 @@ object Entry : CliktCommand() {
 
             if (logout) {
                 performLogout()
+                delay(1000L)
+                performLogout()
+                delay(1000L)
+                performLogout()
             }
 
             delay(retryWaitTime * 1000L)
