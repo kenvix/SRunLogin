@@ -1,4 +1,5 @@
 @file:JvmName("Main")
+
 package com.kenvix.nwafunet
 
 import com.github.ajalt.clikt.core.CliktCommand
@@ -21,26 +22,42 @@ import java.net.http.HttpRequest
 import java.net.http.HttpResponse
 import java.time.Duration
 import java.util.logging.Level
+import kotlin.math.log
 import kotlin.system.exitProcess
 
 /**
  * -Djava.util.logging.ConsoleHandler.level=INFO
  */
 object Entry : CliktCommand() {
-    val portalAddress: String by option("-z", "--portal").help("Login Portal URL. For example http://172.26.8.11").default("http://172.26.8.11")
-    private val ip: String? by option("-a", "--ip").help("Outbound IP").help("Your outbound IP address. Leave blank for auto detect.")
+    val portalAddress: String by option("-z", "--portal").help("Login Portal URL. For example http://172.26.8.11")
+        .default("http://172.26.8.11")
+    private val ip: String? by option("-a", "--ip").help("Outbound IP")
+        .help("Your outbound IP address. Leave blank for auto detect.")
 
     val accountId: String by option("-u", "--username").prompt("Account ID").help("Account ID")
     val accountPassword: String by option("-p", "--password").prompt("Password").help("Password")
-    val networkInterface: String? by option("-i", "--interface").help("Network Interface Name. All traffic will be sent through this interface if specified.").convert { it.trim() }
-    val waitInterface: Int by option().int().help("Wait Network Interface if it is currently unavailable every N seconds. Default 0 for disabled.").default(0)
+    val networkInterface: String? by option(
+        "-i",
+        "--interface"
+    ).help("Network Interface Name. All traffic will be sent through this interface if specified.")
+        .convert { it.trim() }
+    val waitInterface: Int by option().int()
+        .help("Wait Network Interface if it is currently unavailable every N seconds. Default 0 for disabled.")
+        .default(0)
 
     val logout: Boolean by option().boolean().default(false)
-    val checkAlive: Int by option("-c", "--check-alive").int().help("Check whether network is still alive every N seconds. 0 for disabled.").default(0)
-    val keepAlive: Int by option().int().help("Send heart packet to keep alive every N seconds. 0 for disabled.").default(0)
+    val checkAlive: Int by option("-c", "--check-alive").int()
+        .help("Check whether network is still alive every N seconds. 0 for disabled.").default(0)
+    val keepAlive: Int by option().int().help("Send heart packet to keep alive every N seconds. 0 for disabled.")
+        .default(0)
     val isRetry: Int by option("--retry").int().help("Retry every N seconds if failed. 0 for disabled.").default(10)
     val retryWaitTime: Int by option("-r", "--retry-wait-time").int().help("Retry wait time in N seconds").default(2)
-    val logLevel: Level by option("-l", "--log-level").convert { Level.parse(it) }.help("Log Level. FINEST < FINER < FINE < CONFIG < INFO < WARNING < SEVERE").default(Level.INFO)
+    val logLevel: Level by option("-l", "--log-level").convert { Level.parse(it) }
+        .help("Log Level. FINEST < FINER < FINE < CONFIG < INFO < WARNING < SEVERE").default(Level.INFO)
+
+    val onlineHandler: String? by option().help("Execute command when network online. For example: /usr/bin/notify-send 'Network is online'")
+    val waitOnlineHandler: Boolean by option().boolean().default(false)
+//     val offlineHandler: String? by option().help("Execute command when network offline. For example: /usr/bin/notify-send 'Network is offline'")
 
     val httpClient by lazy {
         HttpClient.newBuilder()
@@ -49,7 +66,10 @@ object Entry : CliktCommand() {
                 if (networkInterface == null) {
                     it
                 } else {
-                    it.localAddress(getInterfaceAvailableLocalAddress() ?: throw IllegalArgumentException("Network interface $networkInterface not found"))
+                    it.localAddress(
+                        getInterfaceAvailableLocalAddress()
+                            ?: throw IllegalArgumentException("Network interface $networkInterface not found")
+                    )
                 }
             }.build()
     }
@@ -73,7 +93,7 @@ object Entry : CliktCommand() {
     private val logger by lazy { Logging.getLogger("Entry", logLevel) }
     private val mutex = Mutex()
 
-    override fun run() { }
+    override fun run() {}
 
     @OptIn(DelicateCoroutinesApi::class)
     suspend fun entry(): Int {
@@ -197,23 +217,47 @@ object Entry : CliktCommand() {
     }
 
     suspend fun performNetworkAuth() {
-        while (!isIntraNetworkReady()) {
-            // performLogout()
-            delay(500L)
+        coroutineScope {
+            while (!isIntraNetworkReady()) {
+                // performLogout()
+                delay(500L)
 
-            val loginResult = performLogin()
+                val loginResult = performLogin()
 
-            if (loginResult && logout) {
-                performLogout()
-                delay(1000L)
-                performLogout()
-                delay(1000L)
-                performLogout()
+                if (loginResult && logout) {
+                    performLogout()
+                    delay(1000L)
+                    performLogout()
+                    delay(1000L)
+                    performLogout()
+                }
+
+                if (!loginResult) {
+                    logger.warning("Failed to login, retrying... after $retryWaitTime seconds")
+                    delay(retryWaitTime * 1000L)
+                }
             }
 
-            if (!loginResult)
-                logger.warning("Failed to login, retrying... after $retryWaitTime seconds")
-            delay(retryWaitTime * 1000L)
+            if (onlineHandler != null) {
+                logger.fine("Network is online, executing online handler: $onlineHandler")
+                launch(Dispatchers.IO) {
+                    try {
+                        @Suppress("DEPRECATION")
+                        val proc = Runtime.getRuntime().exec(onlineHandler)
+                        val ret = proc.onExit().await()
+
+                        if (ret.exitValue() != 0) {
+                            logger.warning("Online handler exited with non-zero code: $ret")
+                        } else {
+                            logger.fine("Online handler executed successfully")
+                        }
+                    } catch (e: Exception) {
+                        logger.severe("Failed to execute online handler: ${e.message}")
+                    }
+                }.also { if (waitOnlineHandler) it.join() }
+            }
+
+            logger.info("Login is successful. Network is ready.")
         }
     }
 
@@ -265,7 +309,7 @@ object Entry : CliktCommand() {
     }
 
     private fun createRequestBuilderWithCommonHeaders(url: String): HttpRequest.Builder {
-         return com.kenvix.nwafunet.srun.createRequestBuilderWithCommonHeaders(url, portalAddress)
+        return com.kenvix.nwafunet.srun.createRequestBuilderWithCommonHeaders(url, portalAddress)
     }
 
     suspend fun performLogin(): Boolean {
@@ -285,9 +329,10 @@ object Entry : CliktCommand() {
     suspend fun performLogout() {
         logger.info("Performing logout request")
         val time = System.currentTimeMillis()
-        val request = createRequestBuilderWithCommonHeaders("${portalAddress}/cgi-bin/srun_portal?callback=jQuery112405095399744250795_$time&action=logout&username=$accountId&ip=$outboundIp&ac_id=1&_=$time")
-            .GET()
-            .build()
+        val request =
+            createRequestBuilderWithCommonHeaders("${portalAddress}/cgi-bin/srun_portal?callback=jQuery112405095399744250795_$time&action=logout&username=$accountId&ip=$outboundIp&ac_id=1&_=$time")
+                .GET()
+                .build()
         val rsp = httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString()).await()
         logger.debug("Logout request response # ${rsp.statusCode()}: ${rsp.body()}")
         val err = checkForError(rsp.body())
@@ -304,7 +349,8 @@ object Entry : CliktCommand() {
 
         try {
             // 发送请求并检查响应状态码
-            val response: HttpResponse<Void> = httpClient.sendAsync(request, HttpResponse.BodyHandlers.discarding()).await()
+            val response: HttpResponse<Void> =
+                httpClient.sendAsync(request, HttpResponse.BodyHandlers.discarding()).await()
             if (response.statusCode() == 204) {
                 logger.fine("Public Network is reachable")
                 return true
@@ -322,12 +368,14 @@ object Entry : CliktCommand() {
         logger.fine("Checking Intra network status")
 
         val timestamp = System.currentTimeMillis()
-        val request = createRequestBuilderWithCommonHeaders("$portalAddress/cgi-bin/rad_user_info?callback=jQuery112406390292035501186_$timestamp&_=$timestamp")
-            .build()
+        val request =
+            createRequestBuilderWithCommonHeaders("$portalAddress/cgi-bin/rad_user_info?callback=jQuery112406390292035501186_$timestamp&_=$timestamp")
+                .build()
 
         try {
             // 发送请求并检查响应状态码
-            val response: HttpResponse<String> = httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString()).await()
+            val response: HttpResponse<String> =
+                httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString()).await()
             if ("online_device_total" in response.body() || "not_online_error" !in response.body()) {
                 logger.fine("Intra Network is online")
                 return true
