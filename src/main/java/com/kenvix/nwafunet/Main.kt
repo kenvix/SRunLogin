@@ -201,9 +201,9 @@ object Entry : CliktCommand() {
             // performLogout()
             delay(500L)
 
-            performLogin()
+            val loginResult = performLogin()
 
-            if (logout) {
+            if (loginResult && logout) {
                 performLogout()
                 delay(1000L)
                 performLogout()
@@ -211,6 +211,8 @@ object Entry : CliktCommand() {
                 performLogout()
             }
 
+            if (!loginResult)
+                logger.warning("Failed to login, retrying... after $retryWaitTime seconds")
             delay(retryWaitTime * 1000L)
         }
     }
