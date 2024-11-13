@@ -165,7 +165,7 @@ jobs:
         shell: bash
         if: runner.os == 'Linux' && runner.arch == 'x64'
         run: |
-          zip -r artifacts.zip ./artifacts
+          zip -9 -r Artifacts.zip ./artifacts
 
       - name: Delete existing release
         continue-on-error: true
